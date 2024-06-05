@@ -56,9 +56,18 @@ class BGEAdapter():
             sentence_embeddings = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1)
             return sentence_embeddings  # Return normalized CLS embedding
         
-        encoded_text = model_output.last_hidden_state.to(output_device)
-        attn_mask = encoded_input.attention_mask.bool()
+        encoded_text = model_output.last_hidden_state.to(output_device) 
+        
+        attn_mask = encoded_input.attention_mask.bool()[:, 1:] 
+        input_ids_no_cls = encoded_input.input_ids[:, 1:] 
+        encoded_text_no_cls = encoded_text[:, 1:, :]
 
-        encoded_text = encoded_text.masked_fill_(~attn_mask[..., None], self.text_embed_pad_value)
+        # Create mask for SEP tokens (102)
+        sep_mask = (input_ids_no_cls != 102)
+ 
+        attention_mask_final = attn_mask[sep_mask].view(attn_mask.size(0), -1)
+        encoded_text_final = encoded_text_no_cls[sep_mask.unsqueeze(-1).expand_as(encoded_text_no_cls)].view(encoded_text.size(0), -1, encoded_text.size(2))
 
-        return encoded_text
+        encoded_text_final.masked_fill_(~attention_mask_final[..., None],  self.text_embed_pad_value)
+
+        return encoded_text_final
